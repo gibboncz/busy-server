@@ -19,7 +19,7 @@ Author: Lubos Svoboda
 add_action('send_headers', 'busy_server_start');
 
 
-
+/*
 //Calculate web server load, for statistical purposes, Windows and UNIX, @return string
 if (!function_exists('busy_server_load1')) {
 function busy_server_load1($windows = false) {
@@ -62,7 +62,7 @@ function busy_server_load1($windows = false) {
     return false;
 }
 }
-
+*/
 
 //Calculate web server load, @return array
 if (!function_exists('busy_server_load') ) {
