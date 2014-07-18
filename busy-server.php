@@ -1,10 +1,9 @@
-
 <?php
 /*
 Plugin Name: Busy Server
-Plugin URI: https://github.com/gibboncz/busy-server
+Plugin URI: http://wordpress.org/plugins/busy-server/
 Description: When the server load is higher than specified, show an error message instead of loading the page.
-Version: 0.1
+Version: 0.2.2
 Author: Lubos Svoboda
 */
 ?>
@@ -12,57 +11,36 @@ Author: Lubos Svoboda
 
 
 //TODO: check only when page not cached
-
-
-
+//TODO: Logged in users can always
+	//if (is_user_logged_in()) ;
 
 add_action('send_headers', 'busy_server_start');
 
+// admin actions
+if ( is_admin() ){ 
+  add_action('admin_menu','busy_server_menu');
+  add_action( 'admin_init', 'busy_server_mysettings' );
+} 
 
-/*
-//Calculate web server load, for statistical purposes, Windows and UNIX, @return string
-if (!function_exists('busy_server_load1')) {
-function busy_server_load1($windows = false) {
-    $os=strtolower(PHP_OS);
-    if(strpos($os, 'win') === false){
-        if(file_exists('/proc/loadavg')) {
-            $load = file_get_contents('/proc/loadavg');
-            $load = explode(' ', $load, 1);
-            $load = $load[0];
-        }
-				elseif(function_exists('shell_exec')) {
-            $load = explode(' ','uptime');
-            $load = $load[count($load)-1];
-        }
-				else {
-            return false;
-        }
-        if(function_exists('shell_exec'))$cpu_count = shell_exec('cat /proc/cpuinfo | grep processor | wc -l');
-        return array('Load'=>$load,'CPU count'=>$cpu_count);
-    }
-		elseif($windows){
-        if(class_exists('COM')) {
-            $wmi = new COM("Winmgmts://");
-            //
-						$server = $wmi->execquery("SELECT LoadPercentage FROM Win32_Processor");
-            $load=0;
-            $cpu_count=0;
-             
-             foreach($server as $cpu){
-                 $cpu_count++;
-                 $load += $cpu->loadpercentage;
-             }
-             
-             $load = round($load/$cpu_count);
-            
-            return array('Load'=>$load,'CPU count'=>$cpu_count);
-        }
-        return false;
-    }
-    return false;
+
+
+// Add admin menu entry
+function busy_server_menu(){
+     add_options_page('Busy Server', 'Busy Server', 'manage_options', 'busy-server-menu', 'busy_server_options');
 }
+
+// Add admin options page
+function busy_server_options(){
+     include('busy-server-admin.php');
 }
-*/
+
+
+// Add admin options fields
+function busy_server_mysettings() { // whitelist options
+  register_setting( 'busy-server-group', 'busy_server_max_load' );
+  register_setting( 'busy-server-group', 'busy_server_busy_message' );
+}
+
 
 //Calculate web server load, @return array
 if (!function_exists('busy_server_load') ) {
@@ -85,7 +63,7 @@ if (!function_exists('busy_server_load') ) {
 					return $load;
 				}
 			}	
-			*/		
+			 */		
         } 	else return false;
 	}
 }
@@ -94,27 +72,44 @@ if (!function_exists('busy_server_load') ) {
 //Display the busy error
 if (!function_exists('busy_server_show')) {
 	function busy_server_show() {
-		echo 'Server is busy. Please try reloading this page after few minutes.';
-		exit;
-	}
-}
+	
+		header("HTTP/1.1 503 Service Temporarily Unavailable");
+		header("Status: 503 Service Temporarily Unavailable");
+		header("Retry-After: 3600");
+			?><!DOCTYPE html>
+				<html>
+				<head>
+					<meta http-equiv="Content-Type" content="text/html; charset=UTF-8" />
+					<title>Server Busy</title>
+					<meta name="robots" content="none" />
+				</head>
+				<body>
+					<div>
+			<?php	
+		
+				$busy_msg = get_option('busy_server_busy_message');
+				if (empty($busy_msg))
+					$busy_msg = 'Server is busy. Please try reloading this page after few minutes.'; // default message
+				echo $busy_msg;
+				echo '</div></body>';
+				exit;
+			}
+		}
 
 //Calculate load for UNIX multiple core machine, @return float
 if (!function_exists('busy_server_calculate_load')) {
 	function busy_server_calculate_load($raw_load) {
 		$cores = substr_count (file_get_contents('/proc/cpuinfo'), 'model name');
-		return $raw_load / $cores;
+		if ($cores)
+			return $raw_load / $cores;
+		else
+			return $raw_load;
 	}
 }
 
 //Main routine
 if (!function_exists('busy_server_start')) {
 	function busy_server_start() {
-
-		//default maximum load values:
-		$max_load_win = 98; // percentage
-		$max_load_unix = 2; //load per core ( 1.0 = 100%)
-	
 
 		$load_arr = busy_server_load();
 		if (!empty($load_arr)) {
@@ -127,12 +122,18 @@ if (!function_exists('busy_server_start')) {
 			if(!empty($load_arr['unit'])) {
 				//windows
 				$cur_load = intval($load_arr[1]);
+				$max_load_win = floatval(get_option('busy_server_max_load')); 
+				if (empty($max_load_win))
+					$max_load_win = 98; // default max load percentage
 				if ($cur_load > $max_load_win) 
 					busy_server_show();
 			}
 			else {
 			//UNIX
 				$cur_load = busy_server_calculate_load($load_arr[0]);
+				$max_load_unix = floatval(get_option('busy_server_max_load')); 
+				if (empty($max_load_unix))
+					$max_load_unix = 2; // default load per core ( 1.0 = 100%)
 				if ($cur_load > $max_load_unix) 
 					busy_server_show();
 			}
